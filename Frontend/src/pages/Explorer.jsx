@@ -316,21 +316,21 @@ export default function Explorer() {
   const fmtSize = (b) => b ? (b / 1024 / 1024).toFixed(2) + ' MB' : 'unknown'
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex min-h-[calc(100dvh-6rem)] flex-col md:h-[calc(100vh-4rem)] md:min-h-0">
       {/* Header */}
-      <div className="flex items-start justify-between mb-4 flex-shrink-0">
-        <div>
+      <div className="mb-4 flex flex-shrink-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white mb-1">3D Explorer</h1>
-          <p className="text-slate-400 text-sm">Roam the sample space or load a GLB, GLTF, or PLY reconstruction</p>
+          <p className="text-slate-400 text-sm">Roam the sample space or load a GLB, GLTF, or PLY model</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
           <label className="sr-only" htmlFor="explorer-project">Choose a project</label>
           <select
             id="explorer-project"
             value={projectId || ''}
             onChange={handleProjectChange}
             disabled={projectsLoading}
-            className="max-w-56 bg-slate-900 border border-white/20 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500/50 disabled:opacity-60"
+            className="col-span-2 min-w-0 bg-slate-900 border border-white/20 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500/50 disabled:opacity-60 sm:col-span-1 sm:max-w-56"
           >
             <option value="" className="bg-white text-slate-950">Sample space</option>
             {projects.map(project => (
@@ -339,32 +339,32 @@ export default function Explorer() {
               </option>
             ))}
           </select>
-          <div className="flex rounded-lg border border-white/20 p-0.5">
+          <div className="col-span-2 flex w-full rounded-lg border border-white/20 p-0.5 sm:col-span-1 sm:w-auto">
             <button
               onClick={() => setFirstPerson(false)}
               aria-pressed={!firstPerson}
-              className={`px-3 py-1.5 rounded-md text-sm transition-all ${!firstPerson ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/10'}`}
+              className={`flex-1 px-3 py-2 rounded-md text-sm transition-all sm:flex-none ${!firstPerson ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/10'}`}
             >
               Orbit
             </button>
             <button
               onClick={() => setFirstPerson(true)}
               aria-pressed={firstPerson}
-              className={`px-3 py-1.5 rounded-md text-sm transition-all ${firstPerson ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/10'}`}
+              className={`flex-1 px-3 py-2 rounded-md text-sm transition-all sm:flex-none ${firstPerson ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/10'}`}
             >
               First Person
             </button>
           </div>
           <button onClick={() => setShowGrid(v => !v)}
-            className={`bg-white/10 hover:bg-white/20 border font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all ${showGrid ? 'border-cyan-500/30 text-cyan-400' : 'border-white/20 text-slate-100'}`}>
+            className={`min-h-11 justify-center bg-white/10 hover:bg-white/20 border font-medium px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all sm:px-4 ${showGrid ? 'border-cyan-500/30 text-cyan-400' : 'border-white/20 text-slate-100'}`}>
             Grid
           </button>
           <button onClick={resetCamera}
-            className="bg-white/10 hover:bg-white/20 text-slate-100 border border-white/20 font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all">
+            className="min-h-11 justify-center bg-white/10 hover:bg-white/20 text-slate-100 border border-white/20 font-medium px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all sm:px-4">
             <RotateCcw className="w-4 h-4" /> Reset
           </button>
           <button onClick={() => fileRef.current?.click()}
-            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all">
+            className="col-span-2 min-h-11 justify-center bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all sm:col-span-1">
             <Upload className="w-4 h-4" /> Load Model
           </button>
         </div>
@@ -372,9 +372,9 @@ export default function Explorer() {
 
       <input ref={fileRef} type="file" accept=".glb,.gltf,.ply" className="hidden" onChange={handleFileImport} />
 
-      <div className="flex flex-1 gap-4 min-h-0">
+      <div className="flex flex-1 flex-col gap-4 min-h-0 md:flex-row">
         {/* Viewport */}
-        <div id="explorer-viewport" className="flex-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden relative">
+        <div id="explorer-viewport" className="relative h-[55dvh] min-h-[20rem] w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 md:h-auto md:min-h-0 md:flex-1">
           {/* Loading overlay */}
           {(loading || modelLoading) && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
@@ -453,7 +453,7 @@ export default function Explorer() {
 
         {/* Side panel */}
         {showPanel && (
-          <div className="w-60 flex-shrink-0 space-y-3 overflow-y-auto">
+          <div className="grid w-full flex-shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 md:block md:w-60 md:space-y-3 md:overflow-y-auto">
             {/* Model info */}
             <div className="bg-white/5 border border-white/10 rounded-xl p-4">
               <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2"><Box className="w-4 h-4 text-cyan-400" /> Model Info</h3>
