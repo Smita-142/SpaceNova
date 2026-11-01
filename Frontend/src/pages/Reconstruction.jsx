@@ -13,7 +13,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import StatusBadge from '../components/StatusBadge'
 
 export default function Reconstruction() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { projects, loading: projLoading } = useProjects()
   const modelFileRef = useRef()
@@ -26,9 +26,15 @@ export default function Reconstruction() {
   const [statusData, setStatusData] = useState(null)
   const [error, setError] = useState(null)
   const [polling, setPolling] = useState(false)
+  const projectIdFromUrl = searchParams.get('project') || ''
+
+  useEffect(() => {
+    if (selId !== projectIdFromUrl) setSelId(projectIdFromUrl)
+  }, [projectIdFromUrl, selId])
 
   // Load project when id changes
   useEffect(() => {
+    setPolling(false)
     if (!selId) { setProject(null); setStatusData(null); return }
     let active = true
     setLoadingProj(true); setError(null); setStatusData(null)
@@ -149,7 +155,14 @@ export default function Reconstruction() {
       {/* Project selector */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-6">
         <label className="block text-xs text-slate-400 mb-2">Select Project</label>
-        <select value={selId} onChange={e => { setSelId(e.target.value); setError(null); setStatusData(null) }}
+        <select value={selId} onChange={e => {
+          const nextProjectId = e.target.value
+          setSelId(nextProjectId)
+          setPolling(false)
+          setError(null)
+          setStatusData(null)
+          setSearchParams(nextProjectId ? { project: nextProjectId } : {}, { replace: true })
+        }}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-slate-100 focus:outline-none focus:border-cyan-500/50 transition-all">
           <option value="" className="bg-white text-slate-950">— Choose a project —</option>
           {projects.map(p => <option key={p.id} value={p.id} className="bg-white text-slate-950">{p.name}</option>)}
