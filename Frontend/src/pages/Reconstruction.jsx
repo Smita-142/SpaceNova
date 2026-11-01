@@ -12,6 +12,9 @@ import {
 import LoadingSpinner from '../components/LoadingSpinner'
 import StatusBadge from '../components/StatusBadge'
 
+const missingProjectMessage =
+  'This project is no longer available on the backend. It may have been removed or backend storage was reset. Upload it again, and check that the Render persistent disk is mounted and has space.'
+
 export default function Reconstruction() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -68,7 +71,15 @@ export default function Reconstruction() {
             }
           })
           .catch(e => {
-            if (active) setError(e.response?.data?.detail || 'Could not load reconstruction status')
+            if (!active) return
+            if (e.response?.status === 404) {
+              setPolling(false)
+              setStep('idle')
+              setStatusData({ reconstruction_status: 'failed' })
+              setError(missingProjectMessage)
+            } else {
+              setError(e.response?.data?.detail || 'Could not load reconstruction status')
+            }
           })
       })
       .catch(e => {
@@ -96,7 +107,16 @@ export default function Reconstruction() {
         } else if (r.data.reconstruction_status === 'no_colmap') {
           setPolling(false); setStep('no_colmap')
         }
-      } catch {}
+      } catch (e) {
+        if (e.response?.status === 404) {
+          setPolling(false)
+          setStep('idle')
+          setStatusData({ reconstruction_status: 'failed' })
+          setError(missingProjectMessage)
+        } else {
+          setError('Could not check reconstruction status. Retrying…')
+        }
+      }
     }, 3000)
     return () => clearInterval(iv)
   }, [polling, selId])
