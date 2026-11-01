@@ -65,9 +65,9 @@ system accurately.
 
 ### Reproducibility
 
-The repository includes a compact, shareable sample capture and instructions
-for uploading it, running frame/reconstruction processing, and opening the
-result in the viewer. See [the sample-data guide](../test-data/README.md), the
+The repository includes instructions for using a user's own authorized capture,
+running frame/reconstruction processing, and opening the result in the viewer;
+sample home images are not distributed. See [the reconstruction guide](../test-data/README.md), the
 [capture SOP](./capture-sop.md), and the [system architecture](./architecture.md).
 The live viewer is available at
 <https://space-nova-three.vercel.app>; the source is at

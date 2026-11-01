@@ -3,7 +3,7 @@
 Use this checklist to assemble and verify the Google Drive submission folder.
 The competition brief asks for a viewable Drive link containing the technical
 abstract, a working web-viewer proof of concept, a 3–5 minute demonstration
-video, and the code repository with reconstruction instructions and sample data.
+video, and the code repository with reconstruction instructions.
 
 **Drive folder:** <https://drive.google.com/drive/folders/1KVtCjX_ipmhnvDd6SiHWemYTE9ycGm9j?usp=sharing>
 
@@ -80,18 +80,17 @@ video, and the code repository with reconstruction instructions and sample data.
 - [x] README contains local setup and online deployment instructions.
 - [x] Capture SOP is available at [capture-sop.md](./capture-sop.md).
 - [x] Architecture overview is available at [architecture.md](./architecture.md).
-- [x] Add a `test-data/` directory with a small, team-authorized sample
-  capture (images or a short video); do not include private home imagery without
-  consent.
-- [x] Add a README in `test-data/` describing the source, permission,
-  contents, and recommended reconstruction steps.
+- [x] Add a `test-data/` guide with reconstruction instructions; sample home
+  images are intentionally excluded from the public repository.
+- [x] Explain that users should provide their own authorized capture.
 - [ ] Verify a clean clone can follow the setup instructions and run the
   application.
-- [x] Verify the sample capture can be processed using the documented
-  reconstruction workflow (12 images; local COLMAP completed and exported PLY).
-- [ ] Record the tested environment and any COLMAP/version requirements.
-- [x] Confirm the sample consists only of the authorized images; no full source
-  video, local uploads, or generated reconstruction output is included.
+- [ ] Include a public, shareable sample dataset if the competition requires
+  sample data; obtain permission before publishing any home imagery.
+- [ ] Verify a clean clone can reproduce a reconstruction with authorized
+  sample data.
+- [x] Confirm private home images, local uploads, and generated reconstruction
+  output are excluded from Git.
 - [ ] Add the GitHub repository link to the Drive folder.
 
 ## Evaluation readiness
@@ -101,8 +100,8 @@ video, and the code repository with reconstruction instructions and sample data.
 - [x] Capture guidance covers overlap, movement, lighting, and coverage.
 - [x] The application supports image upload, video frame extraction, and a
   COLMAP reconstruction pipeline.
-- [x] Run one complete reconstruction on the sample capture; COLMAP completed
-  and exported a PLY point cloud.
+- [ ] Run one complete reconstruction on the final publicly shareable capture
+  and retain a successful result.
 - [ ] Keep a short record of input counts, processing time, and any limitations
   encountered for use in the presentation.
 
