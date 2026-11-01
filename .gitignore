@@ -25,3 +25,6 @@ backend/reconstructions/*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Submission PDF is kept locally and uploaded to Google Drive
+documentation/SpaceNova-Technical-Abstract.pdf
