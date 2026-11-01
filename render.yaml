@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: spacenova-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: CORS_ORIGINS
+        sync: false
+      - key: COLMAP_EXECUTABLE
+        value: /usr/bin/colmap
+      - key: SPACE_NOVA_DATA_DIR
+        value: /var/data
+    disk:
+      name: spacenova-data
+      mountPath: /var/data
+      sizeGB: 10

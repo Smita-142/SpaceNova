@@ -1,0 +1,27 @@
+# Environment and credentials
+.env
+.env.*
+!.env.example
+
+# JavaScript dependencies and generated output
+node_modules/
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.tsupgrader/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# User uploads and generated reconstructions
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/reconstructions/*
+!backend/reconstructions/.gitkeep
+
+# Operating-system files
+.vscode/
+.DS_Store
+Thumbs.db
