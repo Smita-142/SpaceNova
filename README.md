@@ -64,8 +64,9 @@ a persistent process and filesystem.
    uploads and reconstructions are stored there.
 
 The Render service requires a paid instance with a persistent disk. COLMAP
-runs on CPU in this deployment. The live viewer URL and GitHub repository URL
-are assigned by those services after deployment.
+runs on CPU in this deployment. Large reconstruction images are downscaled to a
+maximum dimension of 2000 pixels before COLMAP processing. The live viewer URL
+and GitHub repository URL are assigned by those services after deployment.
 
 The submission-ready abstract is in
 [documentation/technical-abstract.md](documentation/technical-abstract.md).

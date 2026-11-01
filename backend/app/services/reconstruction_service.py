@@ -94,6 +94,66 @@ def check_colmap_available() -> bool:
 
 COLMAP_AVAILABLE = check_colmap_available()
 
+_ACTIVE_RECONSTRUCTIONS: set[str] = set()
+_RECONSTRUCTION_LOCK = threading.Lock()
+MAX_RECONSTRUCTION_IMAGE_SIZE = 2000
+
+
+def is_reconstruction_running(project_id: str) -> bool:
+    """Return whether this process currently owns a reconstruction worker."""
+    with _RECONSTRUCTION_LOCK:
+        return project_id in _ACTIVE_RECONSTRUCTIONS
+
+
+def reconcile_reconstruction_status(project_id: str, meta: dict) -> dict:
+    """Mark a persisted job as interrupted when its in-process worker is gone."""
+    if (
+        meta.get("reconstruction_status") == "processing"
+        and not is_reconstruction_running(project_id)
+    ):
+        meta["reconstruction_status"] = "failed"
+        meta["error_message"] = (
+            "Reconstruction was interrupted when the backend stopped. "
+            "Start reconstruction again to retry."
+        )
+        meta["reconstruction_failed_at"] = datetime.utcnow().isoformat()
+        save_project_meta(project_id, meta)
+    return meta
+
+
+def resize_reconstruction_images(images_dir: Path) -> int:
+    """Downscale staging copies before COLMAP to reduce CPU cost on large captures."""
+    if not OPENCV_AVAILABLE:
+        return 0
+
+    resized_count = 0
+    for image_path in sorted(images_dir.iterdir()):
+        if not image_path.is_file() or image_path.suffix.lower() not in {
+            ".jpg", ".jpeg", ".png"
+        }:
+            continue
+
+        image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+        if image is None:
+            raise RuntimeError(f"Could not read reconstruction image: {image_path.name}")
+
+        height, width = image.shape[:2]
+        largest_dimension = max(height, width)
+        if largest_dimension <= MAX_RECONSTRUCTION_IMAGE_SIZE:
+            continue
+
+        scale = MAX_RECONSTRUCTION_IMAGE_SIZE / largest_dimension
+        resized = cv2.resize(
+            image,
+            (round(width * scale), round(height * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
+        if not cv2.imwrite(str(image_path), resized):
+            raise RuntimeError(f"Could not prepare reconstruction image: {image_path.name}")
+        resized_count += 1
+
+    return resized_count
+
 
 # ── Frame Extraction ───────────────────────────────────────────────────────────
 def extract_frames_from_video(
@@ -213,6 +273,11 @@ def run_colmap_reconstruction(project_id: str) -> None:
         # Collect all images: uploaded images + extracted frames
         images_dir = recon_dir / "images"
         ensure_dir(images_dir)
+        for existing_image in images_dir.iterdir():
+            if existing_image.is_file() and existing_image.suffix.lower() in {
+                ".jpg", ".jpeg", ".png"
+            }:
+                existing_image.unlink()
 
         # Copy uploaded images
         for img in list_project_images(project_id):
@@ -225,27 +290,43 @@ def run_colmap_reconstruction(project_id: str) -> None:
                 if frm.suffix.lower() in {".jpg", ".jpeg", ".png"}:
                     shutil.copy2(frm, images_dir / frm.name)
 
-        total_images = len(list(images_dir.iterdir()))
+        total_images = sum(
+            1 for image in images_dir.iterdir()
+            if image.is_file() and image.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        )
         if total_images < 3:
             raise RuntimeError(f"Need at least 3 images for reconstruction, found {total_images}")
 
         db_path = recon_dir / "database.db"
         sparse_dir = recon_dir / "sparse"
+        if db_path.is_file():
+            db_path.unlink()
+        if sparse_dir.exists():
+            shutil.rmtree(sparse_dir)
         ensure_dir(sparse_dir)
         log_path = recon_dir / "colmap.log"
+        resized_count = resize_reconstruction_images(images_dir)
+        with open(log_path, "w", encoding="utf-8") as log:
+            log.write(
+                f"Prepared {total_images} images; downscaled {resized_count} "
+                f"to at most {MAX_RECONSTRUCTION_IMAGE_SIZE}px for CPU reconstruction.\n"
+            )
 
         def run_cmd(args: list, step: str):
             """Run a COLMAP command and log output."""
-            with open(log_path, "a") as log:
+            with open(log_path, "a", encoding="utf-8", errors="replace") as log:
                 log.write(f"\n=== {step} ===\n")
+                log.flush()
                 result = subprocess.run(
                     [COLMAP_COMMAND, *args], env=get_colmap_environment(),
-                    capture_output=True, text=True, timeout=3600
+                    stdout=log, stderr=subprocess.STDOUT, text=True, timeout=3600
                 )
-                log.write(result.stdout)
-                log.write(result.stderr)
+                log.write("\n")
                 if result.returncode != 0:
-                    raise RuntimeError(f"COLMAP {step} failed (exit {result.returncode}): {result.stderr[:500]}")
+                    raise RuntimeError(
+                        f"COLMAP {step} failed (exit {result.returncode}); "
+                        "see the reconstruction log for details."
+                    )
 
         # Step 1: Feature extraction
         run_cmd([
@@ -303,12 +384,31 @@ def run_colmap_reconstruction(project_id: str) -> None:
         save_project_meta(project_id, meta)
 
 
-def start_reconstruction_async(project_id: str) -> None:
-    """Launch reconstruction in a background thread."""
+def _run_reconstruction_worker(project_id: str) -> None:
+    try:
+        run_colmap_reconstruction(project_id)
+    finally:
+        with _RECONSTRUCTION_LOCK:
+            _ACTIVE_RECONSTRUCTIONS.discard(project_id)
+
+
+def start_reconstruction_async(project_id: str) -> bool:
+    """Launch one reconstruction worker per project in a background thread."""
+    with _RECONSTRUCTION_LOCK:
+        if project_id in _ACTIVE_RECONSTRUCTIONS:
+            return False
+        _ACTIVE_RECONSTRUCTIONS.add(project_id)
+
     thread = threading.Thread(
-        target=run_colmap_reconstruction,
+        target=_run_reconstruction_worker,
         args=(project_id,),
         daemon=True,
         name=f"recon-{project_id[:8]}"
     )
-    thread.start()
+    try:
+        thread.start()
+    except RuntimeError:
+        with _RECONSTRUCTION_LOCK:
+            _ACTIVE_RECONSTRUCTIONS.discard(project_id)
+        raise
+    return True

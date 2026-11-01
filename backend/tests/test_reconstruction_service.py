@@ -3,7 +3,7 @@ import unittest
 import os
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.services import reconstruction_service
 
@@ -83,6 +83,13 @@ class ColmapPipelineTests(unittest.TestCase):
                 image.write_bytes(b"image")
 
             recon_dir = root / "reconstruction"
+            images_dir = recon_dir / "images"
+            images_dir.mkdir(parents=True)
+            (images_dir / "stale_frame.jpg").write_bytes(b"stale")
+            (recon_dir / "database.db").write_bytes(b"stale database")
+            stale_sparse_model = recon_dir / "sparse" / "old"
+            stale_sparse_model.mkdir(parents=True)
+            (stale_sparse_model / "images.bin").touch()
             meta = {"id": "project-id"}
 
             def run_colmap(command, **_kwargs):
@@ -102,6 +109,7 @@ class ColmapPipelineTests(unittest.TestCase):
                 patch.object(reconstruction_service, "load_project_meta", return_value=meta),
                 patch.object(reconstruction_service, "save_project_meta"),
                 patch.object(reconstruction_service, "COLMAP_COMMAND", "colmap"),
+                patch.object(reconstruction_service, "OPENCV_AVAILABLE", False),
                 patch.object(
                     reconstruction_service.subprocess, "run", side_effect=run_colmap
                 ) as run,
@@ -113,14 +121,96 @@ class ColmapPipelineTests(unittest.TestCase):
             self.assertEqual(
                 commands[0][commands[0].index("--FeatureExtraction.use_gpu") + 1], "0"
             )
+            self.assertNotIn("--SiftExtraction.max_image_size", commands[0])
+            self.assertNotIn("--SiftExtraction.max_num_features", commands[0])
             self.assertIn("--FeatureMatching.use_gpu", commands[1])
             self.assertEqual(
                 commands[1][commands[1].index("--FeatureMatching.use_gpu") + 1], "0"
             )
             self.assertEqual(commands[-1][1], "model_converter")
+            self.assertEqual(
+                {image.name for image in images_dir.iterdir()},
+                {image.name for image in images},
+            )
+            self.assertFalse((recon_dir / "database.db").exists())
+            self.assertFalse((recon_dir / "sparse" / "old").exists())
             self.assertTrue((recon_dir / "sparse_reconstruction.ply").is_file())
             self.assertEqual(meta["reconstruction_status"], "completed")
             self.assertTrue(meta["model_available"])
+
+
+class ReconstructionImagePreparationTests(unittest.TestCase):
+    def test_downscales_large_images_in_staging_directory(self):
+        image_path = Path("large.jpg")
+        image = Mock()
+        image.shape = (3840, 2160, 3)
+        resized_image = object()
+        fake_cv2 = Mock()
+        fake_cv2.IMREAD_UNCHANGED = -1
+        fake_cv2.INTER_AREA = 3
+        fake_cv2.imread.return_value = image
+        fake_cv2.resize.return_value = resized_image
+        fake_cv2.imwrite.return_value = True
+
+        with (
+            patch.object(reconstruction_service, "OPENCV_AVAILABLE", True),
+            patch.object(reconstruction_service, "cv2", fake_cv2, create=True),
+            patch.object(Path, "iterdir", return_value=iter([image_path])),
+            patch.object(Path, "is_file", return_value=True),
+        ):
+            resized_count = reconstruction_service.resize_reconstruction_images(
+                Path("staging")
+            )
+
+        self.assertEqual(resized_count, 1)
+        fake_cv2.resize.assert_called_once_with(
+            image, (1125, 2000), interpolation=fake_cv2.INTER_AREA
+        )
+        fake_cv2.imwrite.assert_called_once_with(str(image_path), resized_image)
+
+
+class ReconstructionLifecycleTests(unittest.TestCase):
+    def test_marks_orphaned_processing_job_as_interrupted(self):
+        meta = {"reconstruction_status": "processing"}
+
+        with (
+            patch.object(reconstruction_service, "is_reconstruction_running", return_value=False),
+            patch.object(reconstruction_service, "save_project_meta") as save_meta,
+        ):
+            result = reconstruction_service.reconcile_reconstruction_status(
+                "project-id", meta
+            )
+
+        self.assertIs(result, meta)
+        self.assertEqual(result["reconstruction_status"], "failed")
+        self.assertIn("interrupted", result["error_message"])
+        save_meta.assert_called_once_with("project-id", meta)
+
+    def test_keeps_status_processing_while_worker_is_active(self):
+        meta = {"reconstruction_status": "processing"}
+
+        with (
+            patch.object(reconstruction_service, "is_reconstruction_running", return_value=True),
+            patch.object(reconstruction_service, "save_project_meta") as save_meta,
+        ):
+            result = reconstruction_service.reconcile_reconstruction_status(
+                "project-id", meta
+            )
+
+        self.assertEqual(result["reconstruction_status"], "processing")
+        save_meta.assert_not_called()
+
+    def test_does_not_start_a_second_worker_for_the_same_project(self):
+        project_id = "project-id"
+        with reconstruction_service._RECONSTRUCTION_LOCK:
+            reconstruction_service._ACTIVE_RECONSTRUCTIONS.discard(project_id)
+        self.addCleanup(
+            reconstruction_service._ACTIVE_RECONSTRUCTIONS.discard, project_id
+        )
+
+        with patch.object(reconstruction_service.threading.Thread, "start"):
+            self.assertTrue(reconstruction_service.start_reconstruction_async(project_id))
+            self.assertFalse(reconstruction_service.start_reconstruction_async(project_id))
 
 
 class FakeCapture:

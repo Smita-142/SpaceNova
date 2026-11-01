@@ -18,6 +18,15 @@ from app.utils.file_utils import (
 router = APIRouter(prefix="/api/projects", tags=["reconstruction"])
 
 
+def _read_log_tail(path: Path, max_bytes: int = 8192, max_lines: int = 20) -> str:
+    """Read only the end of a COLMAP log so status polling stays inexpensive."""
+    with path.open("rb") as log_file:
+        log_file.seek(0, 2)
+        log_file.seek(max(0, log_file.tell() - max_bytes))
+        content = log_file.read().decode("utf-8", errors="replace")
+    return "\n".join(content.splitlines()[-max_lines:])
+
+
 @router.post("/{project_id}/extract-frames", response_model=ExtractFramesResponse)
 async def extract_frames(project_id: str, body: ExtractFramesRequest):
     """Extract frames from all videos in the project at the given fps."""
@@ -86,7 +95,11 @@ async def start_reconstruction(project_id: str, body: ReconstructRequest):
             ),
         )
 
-    reconstruction_service.start_reconstruction_async(project_id)
+    if not reconstruction_service.start_reconstruction_async(project_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Reconstruction is already running for this project.",
+        )
 
     return {
         "project_id": project_id,
@@ -103,16 +116,15 @@ async def get_status(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     meta = load_project_meta(project_id) or {}
+    meta = reconstruction_service.reconcile_reconstruction_status(project_id, meta)
 
-    # Read last lines of COLMAP log if available
+    # Read a bounded tail while COLMAP writes progress to the log.
     log_tail = None
     log_path = get_reconstruction_dir(project_id) / "colmap.log"
     if log_path.exists():
         try:
-            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
-            log_tail = "".join(lines[-20:])
-        except Exception:
+            log_tail = _read_log_tail(log_path)
+        except OSError:
             pass
 
     return ProjectStatusResponse(
