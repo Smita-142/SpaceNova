@@ -12,6 +12,7 @@ import * as THREE from 'three'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { getProjectModel } from '../services/api'
 import { getWASDAxes } from '../components/firstPersonMovement'
+import { useProjects } from '../hooks/useProjects'
 
 /* ─── 3D components ───────────────────────────────────────────────── */
 
@@ -223,7 +224,8 @@ const COMING_SOON = [
 ]
 
 export default function Explorer() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { projects, loading: projectsLoading } = useProjects()
   const projectId = searchParams.get('project')
   const fileRef = useRef()
   const orbitRef = useRef()
@@ -240,10 +242,24 @@ export default function Explorer() {
 
   // Load model from backend if projectId given
   useEffect(() => {
-    if (!projectId) return
-    setLoading(true); setModelErr(null)
+    if (!projectId) {
+      setLoading(false)
+      setModelUrl(null)
+      setModelInfo(null)
+      setModelErr(null)
+      setModelLoading(false)
+      return
+    }
+
+    let active = true
+    setModelUrl(null)
+    setModelInfo(null)
+    setModelLoading(false)
+    setLoading(true)
+    setModelErr(null)
     getProjectModel(projectId)
       .then(r => {
+        if (!active) return
         if (r.data.model_url) {
           setModelUrl(r.data.model_url)
           setModelInfo({ filename: r.data.model_filename })
@@ -251,9 +267,31 @@ export default function Explorer() {
           setModelErr('No 3D model found for this project. Run reconstruction first or import a GLB, GLTF, or PLY file.')
         }
       })
-      .catch(e => setModelErr(e.response?.data?.detail || 'Could not fetch model info'))
-      .finally(() => setLoading(false))
+      .catch(e => {
+        if (active) setModelErr(e.response?.data?.detail || 'Could not fetch model info')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
   }, [projectId])
+
+  useEffect(() => () => {
+    if (modelUrl?.startsWith('blob:')) URL.revokeObjectURL(modelUrl)
+  }, [modelUrl])
+
+  const handleProjectChange = (event) => {
+    const nextProjectId = event.target.value
+    if (document.pointerLockElement) document.exitPointerLock()
+    setFirstPerson(false)
+    setModelUrl(null)
+    setModelInfo(null)
+    setModelErr(null)
+    setLoading(Boolean(nextProjectId))
+    setCameraResetToken(token => token + 1)
+    if (nextProjectId) setSearchParams({ project: nextProjectId })
+    else setSearchParams({}, { replace: true })
+  }
 
   const handleFileImport = useCallback((e) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -285,7 +323,22 @@ export default function Explorer() {
           <h1 className="text-2xl font-bold text-white mb-1">3D Explorer</h1>
           <p className="text-slate-400 text-sm">Roam the sample space or load a GLB, GLTF, or PLY reconstruction</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <label className="sr-only" htmlFor="explorer-project">Choose a project</label>
+          <select
+            id="explorer-project"
+            value={projectId || ''}
+            onChange={handleProjectChange}
+            disabled={projectsLoading}
+            className="max-w-56 bg-slate-900 border border-white/20 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500/50 disabled:opacity-60"
+          >
+            <option value="" className="bg-white text-slate-950">Sample space</option>
+            {projects.map(project => (
+              <option key={project.id} value={project.id} className="bg-white text-slate-950">
+                {project.name}
+              </option>
+            ))}
+          </select>
           <div className="flex rounded-lg border border-white/20 p-0.5">
             <button
               onClick={() => setFirstPerson(false)}
@@ -341,6 +394,7 @@ export default function Explorer() {
           )}
 
           <Canvas
+            key={projectId || 'sample-space'}
             camera={{ position: [5, 5, 5], fov: 60 }}
             shadows
             gl={{ antialias: true }}

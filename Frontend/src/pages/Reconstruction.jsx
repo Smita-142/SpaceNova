@@ -29,10 +29,12 @@ export default function Reconstruction() {
 
   // Load project when id changes
   useEffect(() => {
-    if (!selId) { setProject(null); return }
-    setLoadingProj(true); setError(null)
+    if (!selId) { setProject(null); setStatusData(null); return }
+    let active = true
+    setLoadingProj(true); setError(null); setStatusData(null)
     getProject(selId)
       .then(r => {
+        if (!active) return
         setProject(r.data)
         const s = r.data.reconstruction_status
         if (s === 'completed')  setStep('done')
@@ -41,9 +43,35 @@ export default function Reconstruction() {
         else if (r.data.extracted_frames > 0) setStep('extract_done')
         else setStep('idle')
         setFrameCount(r.data.extracted_frames || 0)
+        return getProjectStatus(selId)
+          .then(statusResponse => {
+            if (!active) return
+            const status = statusResponse.data
+            const colmapRecovered = s === 'no_colmap' && status.colmap_available
+            setStatusData(colmapRecovered
+              ? {
+                  ...status,
+                  reconstruction_status: r.data.model_available ? 'completed' : 'pending',
+                  error_message: null,
+                }
+              : status)
+            if (colmapRecovered) {
+              setStep(r.data.model_available
+                ? 'done'
+                : r.data.extracted_frames > 0 ? 'extract_done' : 'idle')
+            }
+          })
+          .catch(e => {
+            if (active) setError(e.response?.data?.detail || 'Could not load reconstruction status')
+          })
       })
-      .catch(e => setError(e.response?.data?.detail || 'Could not load project'))
-      .finally(() => setLoadingProj(false))
+      .catch(e => {
+        if (active) setError(e.response?.data?.detail || 'Could not load project')
+      })
+      .finally(() => {
+        if (active) setLoadingProj(false)
+      })
+    return () => { active = false }
   }, [selId])
 
   // Poll reconstruction status
@@ -289,7 +317,7 @@ export default function Reconstruction() {
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="text-slate-500">Name</dt><dd className="text-slate-200 truncate ml-4">{project.name}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">ID</dt><dd className="text-slate-500 font-mono text-xs">{project.id?.slice(0, 8)}…</dd></div>
-                <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><StatusBadge status={project.reconstruction_status} /></dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd><StatusBadge status={statusData?.reconstruction_status || project.reconstruction_status} /></dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">Model</dt><dd className={project.model_available ? 'text-green-400' : 'text-slate-500'}>{project.model_available ? 'Available' : 'Not yet'}</dd></div>
               </dl>
             </div>
@@ -298,7 +326,14 @@ export default function Reconstruction() {
               <h3 className="font-medium text-white mb-3 flex items-center gap-2"><Info className="w-4 h-4 text-slate-500" /> Requirements</h3>
               <ul className="text-xs text-slate-500 space-y-2">
                 <li className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${totalImages >= 3 ? 'bg-green-500' : 'bg-orange-500'}`} />Minimum 3 images or frames</li>
-                <li className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${statusData?.colmap_available ? 'bg-green-500' : 'bg-orange-500'}`} />COLMAP installed on backend</li>
+                <li className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${statusData == null ? 'bg-slate-600' : statusData.colmap_available ? 'bg-green-500' : 'bg-orange-500'}`} />
+                  {statusData == null
+                    ? 'Checking COLMAP availability…'
+                    : statusData.colmap_available
+                      ? 'COLMAP available on backend'
+                      : 'COLMAP unavailable on backend'}
+                </li>
                 <li className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-600" />Overlapping photos (60–80%)</li>
                 <li className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-600" />Good, consistent lighting</li>
               </ul>

@@ -38,24 +38,53 @@ except ImportError:
 
 # ── COLMAP availability check ──────────────────────────────────────────────────
 def get_colmap_command() -> str:
-    """Resolve COLMAP from an explicit path or the system PATH."""
+    """Resolve COLMAP from configuration, PATH, or the common Windows release folder."""
     configured_command = os.getenv("COLMAP_EXECUTABLE", "").strip().strip('"')
     if configured_command:
         configured_path = Path(configured_command).expanduser()
         if configured_path.is_file():
             return str(configured_path.resolve())
         return shutil.which(configured_command) or configured_command
-    return shutil.which("colmap") or "colmap"
+
+    path_command = shutil.which("colmap")
+    if path_command:
+        return path_command
+
+    windows_release = (
+        Path.home() / "Downloads" / "colmap-x64-windows-nocuda" / "bin" / "colmap.exe"
+    )
+    if windows_release.is_file():
+        return str(windows_release.resolve())
+
+    return "colmap"
 
 
 COLMAP_COMMAND = get_colmap_command()
+
+
+def get_colmap_environment() -> dict[str, str]:
+    """Include the bundled Windows COLMAP runtime and Qt plugin paths."""
+    env = os.environ.copy()
+    executable_dir = Path(COLMAP_COMMAND).expanduser().parent
+    if not executable_dir.is_dir():
+        return env
+
+    env["PATH"] = os.pathsep.join(
+        path for path in (str(executable_dir), env.get("PATH", "")) if path
+    )
+    plugin_dir = executable_dir.parent / "plugins"
+    if plugin_dir.is_dir():
+        env["QT_PLUGIN_PATH"] = os.pathsep.join(
+            path for path in (str(plugin_dir), env.get("QT_PLUGIN_PATH", "")) if path
+        )
+    return env
 
 
 def check_colmap_available() -> bool:
     """Check whether the configured COLMAP executable can run."""
     try:
         result = subprocess.run(
-            [COLMAP_COMMAND, "--help"],
+            [COLMAP_COMMAND, "--help"], env=get_colmap_environment(),
             capture_output=True, timeout=10
         )
         return result.returncode == 0
@@ -210,7 +239,8 @@ def run_colmap_reconstruction(project_id: str) -> None:
             with open(log_path, "a") as log:
                 log.write(f"\n=== {step} ===\n")
                 result = subprocess.run(
-                    [COLMAP_COMMAND, *args], capture_output=True, text=True, timeout=3600
+                    [COLMAP_COMMAND, *args], env=get_colmap_environment(),
+                    capture_output=True, text=True, timeout=3600
                 )
                 log.write(result.stdout)
                 log.write(result.stderr)

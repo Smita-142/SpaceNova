@@ -30,6 +30,47 @@ class ColmapCommandTests(unittest.TestCase):
                 "C:/tools/colmap.exe",
             )
 
+    def test_discovers_windows_release_in_downloads_when_not_on_path(self):
+        executable = Path("C:/Users/test-user/Downloads/colmap-x64-windows-nocuda/bin/colmap.exe")
+
+        with (
+            patch.dict(os.environ, {"COLMAP_EXECUTABLE": ""}),
+            patch.object(reconstruction_service.shutil, "which", return_value=None),
+            patch.object(reconstruction_service.Path, "home", return_value=executable.parents[3]),
+            patch.object(Path, "is_file", return_value=True),
+            patch.object(Path, "resolve", return_value=executable),
+        ):
+            self.assertEqual(
+                reconstruction_service.get_colmap_command(),
+                str(executable),
+            )
+
+    def test_includes_bundled_runtime_and_plugin_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            executable_dir = root / "bin"
+            plugin_dir = root / "plugins"
+            executable_dir.mkdir()
+            plugin_dir.mkdir()
+
+            with (
+                patch.object(
+                    reconstruction_service, "COLMAP_COMMAND",
+                    str(executable_dir / "colmap.exe"),
+                ),
+                patch.dict(os.environ, {"PATH": "existing-path", "QT_PLUGIN_PATH": "existing-plugins"}),
+            ):
+                env = reconstruction_service.get_colmap_environment()
+
+            self.assertEqual(
+                env["PATH"].split(os.pathsep)[:2],
+                [str(executable_dir), "existing-path"],
+            )
+            self.assertEqual(
+                env["QT_PLUGIN_PATH"].split(os.pathsep)[:2],
+                [str(plugin_dir), "existing-plugins"],
+            )
+
 
 class ColmapPipelineTests(unittest.TestCase):
     def test_runs_without_gpu_and_exports_sparse_model_as_ply(self):
