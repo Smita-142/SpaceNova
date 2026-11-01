@@ -71,6 +71,71 @@ class ColmapCommandTests(unittest.TestCase):
                 [str(plugin_dir), "existing-plugins"],
             )
 
+    def test_selects_cpu_flags_supported_by_older_colmap(self):
+        help_outputs = {
+            "feature_extractor": "--SiftExtraction.use_gpu arg (=1)",
+            "exhaustive_matcher": "--SiftMatching.use_gpu arg (=1)",
+        }
+
+        def show_help(command, **_kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=help_outputs[command[1]],
+                stderr="",
+            )
+
+        with patch.object(
+            reconstruction_service.subprocess, "run", side_effect=show_help
+        ):
+            options = reconstruction_service.get_colmap_cpu_options()
+
+        self.assertEqual(
+            options,
+            [
+                "--SiftExtraction.use_gpu", "0",
+                "--SiftMatching.use_gpu", "0",
+            ],
+        )
+
+    def test_selects_cpu_flags_supported_by_newer_colmap(self):
+        help_outputs = {
+            "feature_extractor": "--FeatureExtraction.use_gpu arg (=1)",
+            "exhaustive_matcher": "--FeatureMatching.use_gpu arg (=1)",
+        }
+
+        def show_help(command, **_kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=help_outputs[command[1]],
+                stderr="",
+            )
+
+        with patch.object(
+            reconstruction_service.subprocess, "run", side_effect=show_help
+        ):
+            options = reconstruction_service.get_colmap_cpu_options()
+
+        self.assertEqual(
+            options,
+            [
+                "--FeatureExtraction.use_gpu", "0",
+                "--FeatureMatching.use_gpu", "0",
+            ],
+        )
+
+    def test_reports_colmap_without_a_known_cpu_option(self):
+        with patch.object(
+            reconstruction_service.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess(
+                ["colmap", "feature_extractor", "--help"], 0, stdout="", stderr=""
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "supported CPU/GPU option"):
+                reconstruction_service.get_colmap_cpu_options()
+
 
 class ColmapPipelineTests(unittest.TestCase):
     def test_runs_without_gpu_and_exports_sparse_model_as_ply(self):
@@ -110,6 +175,14 @@ class ColmapPipelineTests(unittest.TestCase):
                 patch.object(reconstruction_service, "save_project_meta"),
                 patch.object(reconstruction_service, "COLMAP_COMMAND", "colmap"),
                 patch.object(reconstruction_service, "OPENCV_AVAILABLE", False),
+                patch.object(
+                    reconstruction_service,
+                    "get_colmap_cpu_options",
+                    return_value=[
+                        "--FeatureExtraction.use_gpu", "0",
+                        "--FeatureMatching.use_gpu", "0",
+                    ],
+                ),
                 patch.object(
                     reconstruction_service.subprocess, "run", side_effect=run_colmap
                 ) as run,

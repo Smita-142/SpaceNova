@@ -155,6 +155,37 @@ def resize_reconstruction_images(images_dir: Path) -> int:
     return resized_count
 
 
+def _get_colmap_cpu_option(subcommand: str, candidates: tuple[str, ...]) -> str:
+    """Find the CPU/GPU switch supported by this COLMAP subcommand version."""
+    result = subprocess.run(
+        [COLMAP_COMMAND, subcommand, "--help"],
+        env=get_colmap_environment(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    help_text = f"{result.stdout}\n{result.stderr}"
+    for option in candidates:
+        if re.search(rf"(?m)^\s*{re.escape(option)}\s+arg\b", help_text):
+            return option
+    raise RuntimeError(
+        f"Could not find a supported CPU/GPU option for COLMAP {subcommand}."
+    )
+
+
+def get_colmap_cpu_options() -> list[str]:
+    """Return CPU-only flags compatible with the installed COLMAP version."""
+    extraction_option = _get_colmap_cpu_option(
+        "feature_extractor",
+        ("--FeatureExtraction.use_gpu", "--SiftExtraction.use_gpu"),
+    )
+    matching_option = _get_colmap_cpu_option(
+        "exhaustive_matcher",
+        ("--FeatureMatching.use_gpu", "--SiftMatching.use_gpu"),
+    )
+    return [extraction_option, "0", matching_option, "0"]
+
+
 # ── Frame Extraction ───────────────────────────────────────────────────────────
 def extract_frames_from_video(
     project_id: str,
@@ -328,6 +359,8 @@ def run_colmap_reconstruction(project_id: str) -> None:
                         "see the reconstruction log for details."
                     )
 
+        cpu_options = get_colmap_cpu_options()
+
         # Step 1: Feature extraction
         run_cmd([
             "feature_extractor",
@@ -335,14 +368,14 @@ def run_colmap_reconstruction(project_id: str) -> None:
             "--image_path", str(images_dir),
             "--ImageReader.camera_model", "SIMPLE_RADIAL",
             "--ImageReader.single_camera", "1",
-            "--FeatureExtraction.use_gpu", "0",
+            *cpu_options[:2],
         ], "feature_extractor")
 
         # Step 2: Feature matching
         run_cmd([
             "exhaustive_matcher",
             "--database_path", str(db_path),
-            "--FeatureMatching.use_gpu", "0",
+            *cpu_options[2:],
         ], "exhaustive_matcher")
 
         # Step 3: Sparse reconstruction (Structure from Motion)
