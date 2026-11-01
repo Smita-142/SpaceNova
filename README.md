@@ -71,6 +71,11 @@ and GitHub repository URL are assigned by those services after deployment.
 The submission-ready abstract is in
 [documentation/technical-abstract.md](documentation/technical-abstract.md).
 The capture procedure is in [documentation/capture-sop.md](documentation/capture-sop.md).
+The compact sample dataset and repeatable run instructions are in
+[test-data/README.md](test-data/README.md). The Round 1 deliverables checklist
+and link sheet are in
+[documentation/round-1-submission-checklist.md](documentation/round-1-submission-checklist.md)
+and [documentation/round-1-submission-links.md](documentation/round-1-submission-links.md).
 
 ---
 
